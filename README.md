@@ -1,45 +1,78 @@
-# 雨里歌單隨機點單曲 🎵
+# 雨里歌單隨機點單曲 — 多管理員自訂帳號密碼版
 
-以兩張歌單照片整理的**隨機抽歌網站**。只有「隨機抽一首」模式；可管理歌單與抽歌紀錄。
+## 功能
+- 訪客：不用登入，只能抽歌、選擇繁簡中文與重新載入共用歌單。
+- 每位管理員有**自己選擇的帳號和密碼**，登入後可以新增、刪除、批次匯入歌單。
+- 帳號允許 `3–32` 位英文字母、數字和底線（例如 `yuli01`, `music_team2`）；不區分英文大小寫。
+- 管理員驗證由 **Supabase Auth** 執行，寫入權限由資料庫 **RLS** 實際限制，公開 GitHub 原始碼不含任何管理員密碼。
+- 初始歌單已按最新兩張圖片更新；部分圖片歌名可能需人工複核。
 
-## A. 放到 GitHub Pages（不需要安裝任何程式）
+## 為什麼能使用「自訂帳號」而不用輸入 Email？
 
-1. 登入 https://github.com ，右上角 `+` → **New repository**。
-2. Repository name 填 `yuli-song-random`，選 **Public**，按 **Create repository**。
-3. 在倉庫頁面選 **Add file → Upload files**，將此資料夾內的 `index.html`、`songs.json`、`歌曲清單.txt`、`supabase_setup.sql`、`.nojekyll`、`README.md` **直接上傳到倉庫根目錄**，按 **Commit changes**。注意不要把整個 ZIP 上傳當成唯一檔案；`.nojekyll` 是隱藏檔，可省略。
-4. 開啟倉庫 **Settings → Pages**。
-5. **Build and deployment → Source** 選 **Deploy from a branch**；Branch 選 `main`、Folder 選 `/(root)`，按 **Save**。
-6. 公開網站網址通常是 `https://你的GitHub帳號.github.io/yuli-song-random/`，可在 Settings → Pages 找到確切網址。
+Supabase Auth 的密碼登入原生使用 Email，因此本版在**網站程式內自動將帳號轉成專用的內部 Email 別名**：
 
-完成以上步驟後，任何裝置能打開同一網址使用網站，但**尚未啟用跨裝置的歌單同步**。在雲端設定完成前，不同裝置的修改會各自留在自己的瀏覽器。
+| 使用者輸入的帳號 | 在 Supabase Auth 建立的內部 Email |
+|---|---|
+| `yuli01` | `yuli01@login.yuli.invalid` |
+| `music_team2` | `music_team2@login.yuli.invalid` |
 
-## B. 共用同一份歌單（Supabase）
+使用者**只需要輸入帳號和密碼**，看不到也不需記住內部 Email。`.invalid` 為專用的非真實郵件域名，**不能收取驗證信或重設密碼信**；所以請由專案擁有者在 Supabase Dashboard **直接建立且確認使用者**、必要時由擁有者重設密碼，不要使用郵件邀請方式。這是為了免設後端的簡易管理方式。若要自行收信改密碼，建議改用真實 Email 登入或另外開發安全後端。
 
-1. 至 https://supabase.com 建立一個專案。
-2. 開啟 **SQL Editor**，貼上本資料夾的 `supabase_setup.sql` 並執行一次。**警告：這份 SQL 為簡易公開協作版，允許匿名存取表中所有房間，不適合私人資料或正式需要權限管制的服務。**
-3. 在 Supabase 的 **Project URL** 及 **API Keys** 複製公開的 `publishable` key（或舊版 `anon` key）。**絕對不要使用 `secret` / `service_role` key。**
-4. 用 UUID 產生器產生一個隨機 UUID 作為 `roomId`（範例格式 `00000000-0000-4000-8000-000000000000`，**不能直接使用這個範例值**）。
-5. 編輯 `index.html` 中的這一行：
+## 一、設定雲端資料庫
 
-   ```js
-   const CLOUD_CONFIG={url:'',anonKey:'',roomId:''};
-   ```
+1. 開啟 https://supabase.com/dashboard 並建立一個 Project。
+2. 進入 **SQL Editor**，執行檔案 `supabase_setup.sql` 的全部內容。
+   - 這套 SQL 會**撤銷舊版匿名寫入 policy**。如果之前已有雲端資料，請先備份，並檢查任何自訂 policy。
+3. 在 **Authentication → Providers → Email**，確保 Email/Password 登入可用。**關閉對外註冊（Signups）**，因為管理員應由專案擁有者手動建立。
+4. 前往 **Authentication → Users → Add user → Create new user**（不同 Dashboard 版本字詞略有差異）。為每位管理員建立：
+   - Email：`自訂帳號@login.yuli.invalid`（例如 `yuli01@login.yuli.invalid`）
+   - Password：為該管理員設定的強密碼
+   - **務必勾選 Auto Confirm User / Confirm Email**（無法寄信到 `.invalid` 網域）
+5. 在同一畫面複製管理員的 **User UID（UUID）**。每位管理員都有不同 UID。
+6. 回到 **SQL Editor**，在資料表 `song_admins` 授權對應 UID：
 
-   把 `url` 填成 Project URL、`anonKey` 填成公開 key、`roomId` 填成你產生的 UUID。
-6. 在 GitHub 倉庫打開 `index.html` → 鉛筆圖示 **Edit** → 貼上修改後內容 → **Commit changes**。GitHub Pages 重新部署後，相同網址上的使用者會讀取同一份雲端歌單。
-7. 用兩個不同裝置開網址，新增一首歌，另一個裝置按「同步歌單」確認是否看得到。
+```sql
+insert into public.song_admins (user_id) values
+ ('第一位管理員真實 User UID'),
+ ('第二位管理員真實 User UID')
+on conflict (user_id) do nothing;
+```
 
-**安全限制**：網站程式碼可被訪客看到。此版本沒有登入及管理員驗證，任何人都能查看、修改共享歌單；此外，SQL 政策允許匿名讀寫全部房間，不是以 UUID 當作保護。要避免外人更動資料，必須額外設計 Supabase Auth 和限制資料存取的 RLS 政策。
+   新增一位管理員就新增 Auth 使用者及 UID；撤銷管理員只需：
 
-**同步限制**：是「開啟／按同步時抓取，以及操作後上傳」，不是即時推播；兩台裝置同時編輯可能最後寫入覆蓋先前寫入。請定期用網站的「下載備份」保留資料。
+```sql
+delete from public.song_admins where user_id = '要撤銷的 User UID';
+```
 
-**歌名品質**：圖片文字密集，預設歌名有可能辨識錯誤，請依原圖校正。
+   這樣即使該人已登入，也不能繼續寫入共用歌單。當有人離開時，亦建議在 Authentication 禁用或刪除其帳號。
 
-## 繁體／简体中文切换
+## 二、在 `index.html` 設定雲端連線
 
-页面右上角可以切换「繁體中文」与「简体中文」，选择会保存在当前浏览器，不影响歌单、抽歌记录或云端同步。歌曲名称保留原始录入文字，不会自动转换。
+搜尋：
 
+```js
+const CLOUD_CONFIG = { url:'', anonKey:'', roomId:'' };
+```
 
-## Song title conversion / 歌名繁簡切換
+把這三個值填好：
+- `url`：Supabase Project URL
+- `anonKey`：**publishable key** 或舊版公開 `anon` key
+- `roomId`：自行產生的一組 UUID v4；同一網站所有人使用同一個 roomId。
 
-介面選擇「简体中文」時，預設歌單、抽歌結果、歌單搜尋與刪除確認，都會顯示簡體歌名；新增簡體歌名會保留原文，並與等價繁體歌名做重複檢查。OpenCC 由 jsDelivr CDN 載入（https://cdn.jsdelivr.net/npm/opencc-js@1.4.2/dist/umd/full.js），無網路時僅支援內建有限的字元轉換；若要完全離線使用應另將 OpenCC JS 檔案放入網站。
+絕對**不要**把 Supabase `service_role` / `secret` key 或管理員密碼寫進 GitHub HTML。
+
+## 三、部署 GitHub Pages
+
+1. 解壓縮本 ZIP，將 `index.html`、`songs.json`、`supabase_setup.sql`、`歌曲清單.txt`、`README.md` 放到 `yukilin549/yuli-s-Random-Playlist` 根目錄並 Commit。
+2. GitHub Pages 用 `main` / `/(root)`。網站網址：
+   https://yukilin549.github.io/yuli-s-Random-Playlist/
+3. 在右上角切換繁體／简体。訪客直接抽歌。管理員點「🔒 管理員」並輸入**自訂帳號**和密碼。
+4. 第一次設定雲端資料庫後，請管理員點「匯入圖片整理歌單」把內建歌單寫入共用資料庫。
+5. 用兩台裝置開網站，一台新增歌、另一台按「重新讀取歌單」驗證同步。
+
+## 注意
+- 網站沒有公開註冊或自助建立管理員的功能。**管理員帳號由 Supabase 專案擁有者建立和授權**；不是讓訪客自己取得管理權。
+- 請每人使用不同強密碼，並私下安全交付，避免在群組公開。`.invalid` 帳號無法透過郵件找回密碼。
+- 跨裝置歌單同步需要完成 Supabase 設定；未設定時只能抽內建的唯讀歌曲。
+- 目前為整份歌單更新，管理員同時編輯時可能互相覆蓋；建議定期備份。
+- 抽歌紀錄僅存在個別裝置，**不會同步到其他裝置**。
